@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>延期申请</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="../css/common.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <a href="javascript:history.back()" class="navbar-back">←</a>
+      <div class="navbar-title">延期申请</div>
+    </div>
+  </nav>
+
+  <div class="main-content" id="pageContent">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <script src="../js/mock.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!user) window.location.href = 'login.html';
+
+    const params = new URLSearchParams(window.location.search);
+    const ledgerId = params.get('ledgerId');
+
+    // 获取可申请延期的台账（已承诺状态）
+    const availableLedgers = MOCK.ledgers.filter(l => {
+      if (ledgerId) return l.id === ledgerId && l.collectStatus === '已承诺';
+      return l.collectStatus === '已承诺';
+    });
+
+    function renderPage() {
+      const container = document.getElementById('pageContent');
+      if (availableLedgers.length === 0) {
+        container.innerHTML = renderEmpty('没有可申请延期的台账');
+        return;
+      }
+
+      container.innerHTML = availableLedgers.map(ledger => `
+        <div class="card">
+          <div style="font-size:15px;font-weight:600;margin-bottom:10px">${ledger.projectName}</div>
+          <div class="card-row"><span class="label">往来单位</span><span class="value">${ledger.company}</span></div>
+          <div class="card-row"><span class="label">应收金额</span><span class="amount">¥${formatMoney(ledger.amount)}</span></div>
+          <div class="card-row"><span class="label">差额</span><span class="value" style="color:#ff4d4f">¥${formatMoney(ledger.diffAmount)}</span></div>
+          <div class="card-row"><span class="label">原计划收款时间</span><span class="value">${formatDate(ledger.planDate)}</span></div>
+
+          <form onsubmit="submitDelay(event, '${ledger.id}')" style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
+            <div class="form-group">
+              <label class="form-label required">新计划收款时间</label>
+              <input class="form-input" type="date" data-required>
+              <div class="form-error">请选择新计划时间</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">申请原因</label>
+              <textarea class="form-textarea" placeholder="请详细说明延期原因" data-required></textarea>
+              <div class="form-error">请填写申请原因</div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">提交延期申请</button>
+          </form>
+        </div>
+      `).join('');
+    }
+
+    function submitDelay(e, ledgerId) {
+      e.preventDefault();
+      const form = e.target;
+      if (!validateForm(form)) return;
+
+      const inputs = form.querySelectorAll('.form-input, .form-textarea');
+      const newDate = inputs[0].value;
+      const reason = inputs[1].value;
+      const ledger = MOCK.ledgers.find(l => l.id === ledgerId);
+
+      if (newDate <= ledger.planDate) {
+        showToast('新计划时间必须晚于原计划时间');
+        return;
+      }
+
+      // 创建审批记录
+      const newApproval = {
+        id: 'D' + String(MOCK.delayApprovals.length + 1).padStart(3, '0'),
+        ledgerId: ledger.id,
+        ledgerName: ledger.projectName,
+        applicant: user.id,
+        applicantName: user.name,
+        originalDate: ledger.planDate,
+        newDate: newDate,
+        reason: reason,
+        status: '待审批',
+        opinion: ''
+      };
+      MOCK.delayApprovals.push(newApproval);
+
+      showToast('延期申请已提交，请等待审批');
+      setTimeout(() => {
+        window.location.href = 'delay-approval.html';
+      }, 800);
+    }
+
+    renderPage();
+  </script>
+</body>
+</html>

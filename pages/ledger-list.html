@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>台账列表</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="../css/common.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <a href="dashboard.html" class="navbar-back">←</a>
+      <div class="navbar-title">台账列表</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="navbar-action" onclick="openModal('importModal')" style="font-size:13px;color:#52c41a">📥 导入</span>
+      <span class="navbar-action" onclick="openModal('newLedgerModal')">+ 新建</span>
+    </div>
+  </nav>
+
+  <!-- 搜索区 -->
+  <div class="search-bar">
+    <input class="search-input" id="searchInput" type="text" placeholder="搜索项目名称 / 往来单位 / 项目编号" oninput="filterLedgers()">
+  </div>
+
+  <!-- 状态Tab -->
+  <div class="tabs" id="statusTabs">
+    <div class="tab-item active" data-status="all" onclick="switchTab('all', this)">全部</div>
+    <div class="tab-item" data-status="待回款" onclick="switchTab('待回款', this)">待回款<span class="tab-badge" id="pendingBadge">0</span></div>
+    <div class="tab-item" data-status="已承诺" onclick="switchTab('已承诺', this)">已承诺</div>
+    <div class="tab-item" data-status="已回款" onclick="switchTab('已回款', this)">已回款</div>
+    <div class="tab-item" data-status="坏账关闭" onclick="switchTab('坏账关闭', this)">坏账关闭</div>
+  </div>
+
+  <!-- 筛选区 -->
+  <div class="filter-bar" id="filterBar">
+    <select class="filter-tag" id="filterRegion" onchange="filterLedgers()" style="font-size:12px;padding:4px 8px;border-radius:16px;border:1px solid #e5e5e5;outline:none">
+      <option value="">全部区域</option>
+      <option value="华东">华东</option>
+      <option value="华南">华南</option>
+      <option value="华北">华北</option>
+      <option value="西南">西南</option>
+      <option value="华中">华中</option>
+      <option value="山东">山东</option>
+      <option value="行拓1组">行拓1组</option>
+      <option value="行拓2组">行拓2组</option>
+      <option value="智能化">智能化</option>
+    </select>
+    <select class="filter-tag" id="filterOverdue" onchange="filterLedgers()" style="font-size:12px;padding:4px 8px;border-radius:16px;border:1px solid #e5e5e5;outline:none">
+      <option value="">全部逾期</option>
+      <option value="未逾期">未逾期</option>
+      <option value="即将逾期">即将逾期</option>
+      <option value="已逾期">已逾期</option>
+    </select>
+  </div>
+
+  <!-- 列表区 -->
+  <div class="main-content" id="ledgerList" style="min-height:300px">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <!-- 新建台账弹窗 -->
+  <div class="modal-overlay" id="newLedgerModal">
+    <div class="modal-content">
+      <div class="modal-title">新建台账</div>
+      <form id="newLedgerForm" onsubmit="createLedger(event)">
+        <div class="form-group"><label class="form-label required">区域</label><select class="form-select" data-required><option value="">请选择</option><option>华北</option><option>华东</option><option>华南</option><option>华中</option><option>山东</option><option>西南</option><option>行拓1组</option><option>行拓2组</option><option>智能化</option></select><div class="form-error">请选择区域</div></div>
+        <div class="form-group"><label class="form-label required">项目编号</label><input class="form-input" placeholder="如 PRJ-2026-XXX" data-required><div class="form-error">请输入项目编号</div></div>
+        <div class="form-group"><label class="form-label required">项目名称</label><input class="form-input" placeholder="请输入项目名称" data-required><div class="form-error">请输入项目名称</div></div>
+        <div class="form-group"><label class="form-label required">往来单位</label><input class="form-input" placeholder="请输入客户名称" data-required><div class="form-error">请输入往来单位</div></div>
+        <div class="form-group"><label class="form-label required">应收金额（元）</label><input class="form-input" type="number" placeholder="0.00" data-required><div class="form-error">请输入应收金额</div></div>
+        <div class="form-group"><label class="form-label required">应收款类型</label><select class="form-select" data-required><option value="">请选择</option><option>开票应收</option><option>未开票应收</option></select><div class="form-error">请选择类型</div></div>
+        <div class="form-group"><label class="form-label required">账龄（天）</label><input class="form-input" type="number" placeholder="0" data-required><div class="form-error">请输入账龄</div></div>
+        <div class="form-group"><label class="form-label required">计划收款时间</label><input class="form-input" type="date" data-required><div class="form-error">请选择日期</div></div>
+        <div class="form-group"><label class="form-label required">催收负责人</label><select class="form-select" data-required id="collectorSelect"><option value="">请选择</option></select><div class="form-error">请选择负责人</div></div>
+        <div class="form-group"><label class="form-label">备注说明</label><textarea class="form-textarea" placeholder="可选"></textarea></div>
+        <button type="submit" class="btn btn-primary btn-block">确认创建</button>
+      </form>
+      <div style="text-align:center;margin-top:10px">
+        <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('newLedgerModal')">取消</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Excel导入弹窗 -->
+  <div class="modal-overlay center" id="importModal">
+    <div class="modal-content">
+      <div class="modal-title">Excel导入台账</div>
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:48px;margin-bottom:12px">📁</div>
+        <div style="font-size:13px;color:#666;margin-bottom:16px">支持 .xlsx / .xls 格式文件</div>
+        <div style="border:2px dashed #e5e5e5;border-radius:12px;padding:30px 20px;margin-bottom:16px;cursor:pointer" id="uploadArea" onclick="mockImport()">
+          <div style="font-size:14px;color:#1677ff;margin-bottom:4px">点击选择文件或拖拽到此处</div>
+          <div style="font-size:11px;color:#999">单次最多导入 500 条记录</div>
+        </div>
+        <div style="font-size:12px;color:#999;margin-bottom:16px;text-align:left;background:#f7f8fa;border-radius:8px;padding:12px">
+          <div style="font-weight:500;margin-bottom:6px;color:#666">导入说明：</div>
+          <div>1. 请先下载模板，按模板格式填写数据</div>
+          <div>2. 区域、应收款类型必须使用枚举值</div>
+          <div>3. 日期格式：YYYY-MM-DD</div>
+          <div>4. 金额单位为元</div>
+        </div>
+        <div id="importResult" style="display:none;padding:12px;border-radius:8px;margin-bottom:12px"></div>
+        <button class="btn btn-outline btn-block" onclick="downloadTemplate()" style="margin-bottom:8px">📥 下载导入模板</button>
+      </div>
+      <div style="text-align:center">
+        <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('importModal')">关闭</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑台账弹窗 -->
+  <div class="modal-overlay" id="editLedgerModal">
+    <div class="modal-content">
+      <div class="modal-title">编辑台账</div>
+      <form id="editLedgerForm" onsubmit="saveEditLedger(event)">
+        <input type="hidden" id="editLedgerId">
+        <div class="form-group"><label class="form-label required">项目名称</label><input class="form-input" id="editProjectName" placeholder="请输入项目名称" data-required><div class="form-error">请输入项目名称</div></div>
+        <div class="form-group"><label class="form-label required">往来单位</label><input class="form-input" id="editCompany" placeholder="请输入客户名称" data-required><div class="form-error">请输入往来单位</div></div>
+        <div class="form-group"><label class="form-label required">应收金额（元）</label><input class="form-input" id="editAmount" type="number" placeholder="0.00" data-required><div class="form-error">请输入应收金额</div></div>
+        <div class="form-group"><label class="form-label required">计划收款时间</label><input class="form-input" id="editPlanDate" type="date" data-required><div class="form-error">请选择日期</div></div>
+        <div class="form-group" id="editCollectorGroup" style="display:none"><label class="form-label required">催收负责人</label><select class="form-select" id="editCollector" data-required><option value="">请选择</option></select><div class="form-error">请选择负责人</div></div>
+        <div class="form-group"><label class="form-label">备注说明</label><textarea class="form-textarea" id="editRemark" placeholder="可选"></textarea></div>
+        <button type="submit" class="btn btn-primary btn-block">保存修改</button>
+      </form>
+      <div style="text-align:center;margin-top:10px">
+        <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('editLedgerModal')">取消</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 状态更新弹窗 -->
+  <div class="modal-overlay" id="statusModal">
+    <div class="modal-content" id="statusModalContent"></div>
+  </div>
+
+  <script src="../js/mock.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!user) window.location.href = 'login.html';
+
+    let currentTab = 'all';
+    let ledgers = getFilteredLedgers();
+
+    // 构建用户选项
+    (function() {
+      const sel = document.getElementById('collectorSelect');
+      MOCK.users.filter(u => u.role === 'salesman').forEach(u => {
+        sel.innerHTML += `<option value="${u.id}">${u.name}</option>`;
+      });
+    })();
+
+    // 更新Tab徽标
+    function updateBadge() {
+      const pendingCount = ledgers.filter(l => l.collectStatus === '待回款').length;
+      document.getElementById('pendingBadge').textContent = pendingCount;
+    }
+    updateBadge();
+
+    function switchTab(status, el) {
+      currentTab = status;
+      document.querySelectorAll('#statusTabs .tab-item').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      filterLedgers();
+    }
+
+    function filterLedgers() {
+      const keyword = (document.getElementById('searchInput').value || '').toLowerCase();
+      const region = document.getElementById('filterRegion').value;
+      const overdue = document.getElementById('filterOverdue').value;
+
+      let filtered = getFilteredLedgers();
+
+      if (currentTab !== 'all') {
+        filtered = filtered.filter(l => l.collectStatus === currentTab);
+      }
+      if (keyword) {
+        filtered = filtered.filter(l =>
+          l.projectName.toLowerCase().includes(keyword) ||
+          l.company.toLowerCase().includes(keyword) ||
+          l.projectNo.toLowerCase().includes(keyword)
+        );
+      }
+      if (region) filtered = filtered.filter(l => l.region === region);
+      if (overdue) filtered = filtered.filter(l => l.overdueStatus === overdue);
+
+      // 逾期项目置顶
+      filtered.sort((a, b) => {
+        if (a.overdueStatus === '已逾期' && b.overdueStatus !== '已逾期') return -1;
+        if (a.overdueStatus !== '已逾期' && b.overdueStatus === '已逾期') return 1;
+        return 0;
+      });
+
+      renderList(filtered);
+    }
+
+    function renderList(data) {
+      const container = document.getElementById('ledgerList');
+      if (data.length === 0) {
+        container.innerHTML = renderEmpty('没有匹配的台账记录');
+        return;
+      }
+      container.innerHTML = data.map(l => {
+        const isRisk = l.category === '风险' || l.overdueStatus === '已逾期';
+        return `
+        <div class="card ${isRisk ? 'risk-highlight' : ''}" onclick="viewDetail('${l.id}')">
+          <div class="card-header">
+            <div class="card-title">${l.projectName}</div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              ${getOverdueStatusTag(l.overdueStatus)}
+              ${getCollectStatusTag(l.collectStatus)}
+            </div>
+          </div>
+          <div class="card-row">
+            <span class="label">往来单位</span>
+            <span class="value">${l.company}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">应收金额</span>
+            <span class="amount">¥${formatMoney(l.amount)}</span>
+          </div>
+          <div class="card-row">
+            <span class="label">已到账 / 差额</span>
+            <span class="value">¥${formatMoney(l.receivedAmount)} / <span style="color:${l.diffAmount > 0 ? '#ff4d4f' : '#52c41a'}">¥${formatMoney(l.diffAmount)}</span></span>
+          </div>
+          <div class="card-row">
+            <span class="label">计划收款</span>
+            <span class="value">${formatDate(l.planDate)}</span>
+          </div>
+          <div class="card-footer">
+            ${l.collectStatus === '待回款' ? `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openStatusModal('${l.id}','promise')">更新为已承诺</button>` : ''}
+            ${l.collectStatus === '已承诺' ? `<button class="btn btn-success btn-sm" onclick="event.stopPropagation();openStatusModal('${l.id}','paid')">更新为已回款</button>` : ''}
+            ${l.collectStatus === '已承诺' && user.role === 'salesman' ? `<button class="btn btn-warning btn-sm" onclick="event.stopPropagation();window.location.href='delay-apply.html?ledgerId=${l.id}'">申请延期</button>` : ''}
+            ${l.collectStatus === '已回款' || l.collectStatus === '坏账关闭' ? `<span style="font-size:12px;color:#999">${l.collectStatus === '已回款' ? '已完结' : '已关闭'}</span>` : ''}
+            ${(user.role === 'admin' || user.role === 'finance') ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditModal('${l.id}')">编辑</button>` : ''}
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();showToast('催收消息已发送')">催收</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function viewDetail(id) {
+      window.location.href = 'ledger-detail.html?id=' + id;
+    }
+
+    function openStatusModal(ledgerId, type) {
+      const ledger = MOCK.ledgers.find(l => l.id === ledgerId);
+      if (!ledger) return;
+
+      const modal = document.getElementById('statusModalContent');
+      if (type === 'promise') {
+        modal.innerHTML = `
+          <div class="modal-title">更新为"已承诺"</div>
+          <form onsubmit="submitStatusChange(event, '${ledgerId}', 'promise')">
+            <div class="form-group">
+              <label class="form-label">项目：${ledger.projectName}</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">计划收款时间</label>
+              <input class="form-input" type="date" id="promiseDate" data-required>
+              <div class="form-error">请选择计划收款时间</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">备注</label>
+              <textarea class="form-textarea" placeholder="请填写承诺备注" data-required></textarea>
+              <div class="form-error">请填写备注</div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">确认</button>
+          </form>
+          <div style="text-align:center;margin-top:10px">
+            <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('statusModal')">取消</span>
+          </div>`;
+      } else if (type === 'paid') {
+        modal.innerHTML = `
+          <div class="modal-title">更新为"已回款"</div>
+          <form onsubmit="submitStatusChange(event, '${ledgerId}', 'paid')">
+            <div class="form-group">
+              <label class="form-label">项目：${ledger.projectName}</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label">应收金额：¥${formatMoney(ledger.amount)}</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">到账金额（元）</label>
+              <input class="form-input" type="number" placeholder="0.00" data-required>
+              <div class="form-error">请输入到账金额</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">到账时间</label>
+              <input class="form-input" type="date" data-required>
+              <div class="form-error">请选择到账时间</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">备注</label>
+              <textarea class="form-textarea" placeholder="请填写备注" data-required></textarea>
+              <div class="form-error">请填写备注</div>
+            </div>
+            <button type="submit" class="btn btn-success btn-block">确认回款</button>
+          </form>
+          <div style="text-align:center;margin-top:10px">
+            <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('statusModal')">取消</span>
+          </div>`;
+      }
+      openModal('statusModal');
+    }
+
+    function submitStatusChange(e, ledgerId, type) {
+      e.preventDefault();
+      const form = e.target;
+      if (!validateForm(form)) return;
+
+      const ledger = MOCK.ledgers.find(l => l.id === ledgerId);
+      if (type === 'promise') {
+        const date = form.querySelector('#promiseDate').value;
+        ledger.collectStatus = '已承诺';
+        ledger.planDate = date;
+        showToast('状态已更新为"已承诺"');
+      } else if (type === 'paid') {
+        const inputs = form.querySelectorAll('.form-input');
+        ledger.collectStatus = '已回款';
+        ledger.receivedAmount = parseFloat(inputs[0].value);
+        ledger.receivedDate = inputs[1].value;
+        ledger.diffAmount = ledger.amount - ledger.receivedAmount;
+        if (ledger.diffAmount === 0) ledger.overdueStatus = '未逾期';
+        showToast('状态已更新为"已回款"');
+      }
+      closeModal('statusModal');
+      updateBadge();
+      filterLedgers();
+    }
+
+    function createLedger(e) {
+      e.preventDefault();
+      const form = document.getElementById('newLedgerForm');
+      if (!validateForm(form)) return;
+      const inputs = form.querySelectorAll('.form-input, .form-select');
+      const vals = Array.from(inputs).map(i => i.value);
+      const newId = 'L' + String(MOCK.ledgers.length + 1).padStart(3, '0');
+      MOCK.ledgers.push({
+        id: newId, region: vals[0], projectNo: vals[1], projectName: vals[2], company: vals[3],
+        amount: parseFloat(vals[4]), type: vals[5], age: parseInt(vals[6]),
+        collectStatus: '待回款', overdueStatus: '未逾期', planDate: vals[7], collector: vals[8],
+        receivedAmount: 0, diffAmount: parseFloat(vals[4]), receivedDate: '', remark: vals[9] || '', category: '正常'
+      });
+      closeModal('newLedgerModal');
+      form.reset();
+      showToast('台账创建成功');
+      updateBadge();
+      filterLedgers();
+    }
+
+    // Excel导入（mock）
+    function mockImport() {
+      const resultDiv = document.getElementById('importResult');
+      resultDiv.style.display = 'block';
+      resultDiv.style.background = '#f6ffed';
+      resultDiv.style.border = '1px solid #b7eb8f';
+      resultDiv.innerHTML = '<div style="color:#52c41a;font-weight:500">✅ 导入成功！成功导入 8 条，失败 0 条</div>';
+      // mock: 添加导入数据到列表
+      const newLedgers = [
+        { id: 'L' + String(MOCK.ledgers.length + 1).padStart(3, '0'), region: '山东', projectNo: 'PRJ-2026-013', projectName: '济南高新区智慧园区项目', company: '济南高新科技有限公司', amount: 1200000.00, type: '开票应收', age: 20, category: '正常', collectStatus: '待回款', overdueStatus: '未逾期', planDate: '2026-07-15', collector: 'u2', receivedAmount: 0, diffAmount: 1200000.00, receivedDate: '', remark: '' },
+        { id: 'L' + String(MOCK.ledgers.length + 2).padStart(3, '0'), region: '行拓1组', projectNo: 'PRJ-2026-014', projectName: '青岛港智慧物流项目', company: '青岛港物流有限公司', amount: 3500000.00, type: '未开票应收', age: 35, category: '重点', collectStatus: '待回款', overdueStatus: '即将逾期', planDate: '2026-06-20', collector: 'u3', receivedAmount: 0, diffAmount: 3500000.00, receivedDate: '', remark: '' },
+      ];
+      MOCK.ledgers.push(...newLedgers);
+      showToast('导入成功');
+      setTimeout(() => {
+        closeModal('importModal');
+        resultDiv.style.display = 'none';
+        updateBadge();
+        filterLedgers();
+      }, 1200);
+    }
+
+    function downloadTemplate() {
+      showToast('模板下载中，请稍候...');
+    }
+
+    // 编辑台账
+    function openEditModal(id) {
+      const ledger = MOCK.ledgers.find(l => l.id === id);
+      if (!ledger) return;
+      document.getElementById('editLedgerId').value = id;
+      document.getElementById('editProjectName').value = ledger.projectName;
+      document.getElementById('editCompany').value = ledger.company;
+      document.getElementById('editAmount').value = ledger.amount;
+      document.getElementById('editPlanDate').value = ledger.planDate;
+      document.getElementById('editRemark').value = ledger.remark || '';
+
+      if (user.role === 'admin') {
+        document.getElementById('editCollectorGroup').style.display = 'block';
+        const sel = document.getElementById('editCollector');
+        sel.innerHTML = '<option value="">请选择</option>';
+        MOCK.users.filter(u => u.role === 'salesman').forEach(u => {
+          sel.innerHTML += `<option value="${u.id}" ${u.id === ledger.collector ? 'selected' : ''}>${u.name}</option>`;
+        });
+      } else {
+        document.getElementById('editCollectorGroup').style.display = 'none';
+      }
+      openModal('editLedgerModal');
+    }
+
+    function saveEditLedger(e) {
+      e.preventDefault();
+      const form = document.getElementById('editLedgerForm');
+      if (!validateForm(form)) return;
+      const id = document.getElementById('editLedgerId').value;
+      const ledger = MOCK.ledgers.find(l => l.id === id);
+      if (!ledger) return;
+      ledger.projectName = document.getElementById('editProjectName').value;
+      ledger.company = document.getElementById('editCompany').value;
+      ledger.amount = parseFloat(document.getElementById('editAmount').value);
+      ledger.diffAmount = ledger.amount - ledger.receivedAmount;
+      ledger.planDate = document.getElementById('editPlanDate').value;
+      ledger.remark = document.getElementById('editRemark').value;
+      if (user.role === 'admin') {
+        ledger.collector = document.getElementById('editCollector').value;
+      }
+      closeModal('editLedgerModal');
+      showToast('台账已更新');
+      updateBadge();
+      filterLedgers();
+    }
+
+    // 初始化
+    filterLedgers();
+
+    // URL参数处理
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'new') {
+      setTimeout(() => openModal('newLedgerModal'), 300);
+    }
+    if (params.get('filter') === 'overdue') {
+      switchTab('all', document.querySelector('#statusTabs .tab-item'));
+      document.getElementById('filterOverdue').value = '已逾期';
+      filterLedgers();
+    }
+    if (params.get('filter') === 'risk') {
+      switchTab('all', document.querySelector('#statusTabs .tab-item'));
+      filterLedgers();
+    }
+  </script>
+</body>
+</html>

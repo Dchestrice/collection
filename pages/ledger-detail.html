@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>台账详情</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="../css/common.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <div style="display:flex;align-items:center;gap:8px">
+      <a href="ledger-list.html" class="navbar-back">←</a>
+      <div class="navbar-title">台账详情</div>
+    </div>
+  </nav>
+
+  <div class="main-content" id="detailContent">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <!-- 底部操作区 -->
+  <div class="bottom-bar" id="bottomActions"></div>
+
+  <!-- 状态更新弹窗 -->
+  <div class="modal-overlay" id="statusModal">
+    <div class="modal-content" id="statusModalContent"></div>
+  </div>
+
+  <script src="../js/mock.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!user) window.location.href = 'login.html';
+
+    const params = new URLSearchParams(window.location.search);
+    const ledgerId = params.get('id');
+    const ledger = MOCK.ledgers.find(l => l.id === ledgerId);
+
+    if (!ledger) {
+      document.getElementById('detailContent').innerHTML = renderEmpty('台账不存在');
+    } else {
+      renderDetail();
+    }
+
+    function renderDetail() {
+      // 基础信息
+      const section1 = `
+        <div class="detail-section">
+          <div class="detail-section-title">基础信息</div>
+          <div class="detail-row"><span class="detail-label">项目编号</span><span class="detail-value">${ledger.projectNo}</span></div>
+          <div class="detail-row"><span class="detail-label">项目名称</span><span class="detail-value" style="font-weight:500">${ledger.projectName}</span></div>
+          <div class="detail-row"><span class="detail-label">往来单位</span><span class="detail-value">${ledger.company}</span></div>
+          <div class="detail-row"><span class="detail-label">区域</span><span class="detail-value">${ledger.region}</span></div>
+          <div class="detail-row"><span class="detail-label">应收款类型</span><span class="detail-value">${ledger.type}</span></div>
+          <div class="detail-row"><span class="detail-label">应收金额</span><span class="detail-value" style="font-size:16px;font-weight:700;color:#1677ff">¥${formatMoney(ledger.amount)}</span></div>
+          <div class="detail-row"><span class="detail-label">到账金额</span><span class="detail-value">¥${formatMoney(ledger.receivedAmount)}</span></div>
+          <div class="detail-row"><span class="detail-label">差额</span><span class="detail-value" style="color:${ledger.diffAmount > 0 ? '#ff4d4f' : '#52c41a'};font-weight:500">¥${formatMoney(ledger.diffAmount)}</span></div>
+          <div class="detail-row"><span class="detail-label">账龄</span><span class="detail-value">${ledger.age} 天</span></div>
+          <div class="detail-row"><span class="detail-label">催收状态</span><span class="detail-value">${getCollectStatusTag(ledger.collectStatus)}</span></div>
+          <div class="detail-row"><span class="detail-label">逾期状态</span><span class="detail-value">${getOverdueStatusTag(ledger.overdueStatus)}</span></div>
+          <div class="detail-row"><span class="detail-label">计划收款时间</span><span class="detail-value">${formatDate(ledger.planDate)}</span></div>
+          <div class="detail-row"><span class="detail-label">到账时间</span><span class="detail-value">${formatDate(ledger.receivedDate)}</span></div>
+          <div class="detail-row"><span class="detail-label">催收负责人</span><span class="detail-value">${getUserName(ledger.collector)}</span></div>
+          <div class="detail-row"><span class="detail-label">备注说明</span><span class="detail-value">${ledger.remark || '-'}</span></div>
+        </div>`;
+
+      // 延期审批信息
+      const approvals = MOCK.delayApprovals.filter(a => a.ledgerId === ledgerId && (a.status === '已通过' || a.status === '已拒绝'));
+      const approvalSection = approvals.length > 0 ? `
+        <div class="detail-section">
+          <div class="detail-section-title">延期审批信息</div>
+          ${approvals.map(a => `
+            <div style="background:#f7f8fa;border-radius:8px;padding:12px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-size:13px;font-weight:500">延期申请</span>
+                ${a.status === '已通过' ? '<span class="status-tag approved">已通过</span>' : '<span class="status-tag rejected">已拒绝</span>'}
+              </div>
+              <div class="detail-row"><span class="detail-label">申请原因</span><span class="detail-value">${a.reason}</span></div>
+              <div class="detail-row"><span class="detail-label">审批意见</span><span class="detail-value">${a.opinion || '-'}</span></div>
+              <div class="detail-row"><span class="detail-label">原计划时间</span><span class="detail-value">${formatDate(a.originalDate)}</span></div>
+              <div class="detail-row"><span class="detail-label">延期后时间</span><span class="detail-value" style="color:#fa8c16;font-weight:500">${formatDate(a.newDate)}</span></div>
+              <div class="detail-row"><span class="detail-label">审批人</span><span class="detail-value">${a.approverName || '-'}</span></div>
+              <div class="detail-row"><span class="detail-label">审批时间</span><span class="detail-value">${a.approvalTime || '-'}</span></div>
+            </div>
+          `).join('')}
+        </div>` : '';
+
+      // 催收记录时间线
+      const records = MOCK.collectRecords.filter(r => r.ledgerId === ledgerId);
+      const typeClass = { '催收': '', '状态变更': 'green', '延期': 'orange', '到账': 'green' };
+      const section2 = `
+        <div class="detail-section">
+          <div class="detail-section-title">催收记录</div>
+          ${records.length > 0 ? `
+            <div class="timeline">
+              ${records.map(r => `
+                <div class="timeline-item ${typeClass[r.type] || ''}">
+                  <div class="timeline-time">${r.time}</div>
+                  <div class="timeline-content">[${r.type}] ${r.content}<br><span style="font-size:11px;color:#999">操作人：${getUserName(r.operator)}</span></div>
+                </div>
+              `).join('')}
+            </div>
+          ` : renderEmpty('暂无催收记录')}
+        </div>`;
+
+      document.getElementById('detailContent').innerHTML = section1 + approvalSection + section2;
+
+      // 底部操作
+      renderActions();
+    }
+
+    function renderActions() {
+      const bar = document.getElementById('bottomActions');
+      let html = '';
+      switch (ledger.collectStatus) {
+        case '待回款':
+          html = `<button class="btn btn-primary" onclick="openStatusModal('promise')">更新为已承诺</button>`;
+          break;
+        case '已承诺':
+          html = `<button class="btn btn-success" onclick="openStatusModal('paid')">更新为已回款</button>`;
+          if (user.role === 'salesman') {
+            html += `<button class="btn btn-warning" onclick="window.location.href='delay-apply.html?ledgerId=${ledger.id}'">申请延期</button>`;
+          }
+          break;
+        case '已回款':
+        case '坏账关闭':
+          html = `<span style="width:100%;text-align:center;color:#999;font-size:13px">${ledger.collectStatus === '已回款' ? '该台账已完结' : '该台账已关闭'}</span>`;
+          break;
+      }
+      bar.innerHTML = html;
+    }
+
+    function openStatusModal(type) {
+      const modal = document.getElementById('statusModalContent');
+      if (type === 'promise') {
+        modal.innerHTML = `
+          <div class="modal-title">更新为"已承诺"</div>
+          <form onsubmit="submitStatus(event, 'promise')">
+            <div class="form-group">
+              <label class="form-label required">计划收款时间</label>
+              <input class="form-input" type="date" id="promiseDate" data-required>
+              <div class="form-error">请选择计划收款时间</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">备注</label>
+              <textarea class="form-textarea" placeholder="请填写承诺备注" data-required></textarea>
+              <div class="form-error">请填写备注</div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">确认</button>
+          </form>
+          <div style="text-align:center;margin-top:10px">
+            <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('statusModal')">取消</span>
+          </div>`;
+      } else if (type === 'paid') {
+        modal.innerHTML = `
+          <div class="modal-title">更新为"已回款"</div>
+          <form onsubmit="submitStatus(event, 'paid')">
+            <div class="form-group">
+              <label class="form-label">应收金额：¥${formatMoney(ledger.amount)}</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">到账金额（元）</label>
+              <input class="form-input" type="number" placeholder="0.00" data-required>
+              <div class="form-error">请输入到账金额</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">到账时间</label>
+              <input class="form-input" type="date" data-required>
+              <div class="form-error">请选择到账时间</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">备注</label>
+              <textarea class="form-textarea" placeholder="请填写备注" data-required></textarea>
+              <div class="form-error">请填写备注</div>
+            </div>
+            <button type="submit" class="btn btn-success btn-block">确认回款</button>
+          </form>
+          <div style="text-align:center;margin-top:10px">
+            <span style="color:#999;font-size:13px;cursor:pointer" onclick="closeModal('statusModal')">取消</span>
+          </div>`;
+      }
+      openModal('statusModal');
+    }
+
+    function submitStatus(e, type) {
+      e.preventDefault();
+      const form = e.target;
+      if (!validateForm(form)) return;
+
+      if (type === 'promise') {
+        ledger.collectStatus = '已承诺';
+        ledger.planDate = document.getElementById('promiseDate').value;
+        MOCK.collectRecords.push({
+          id: 'R' + Date.now(), ledgerId: ledger.id, type: '状态变更',
+          content: '状态由"待回款"变更为"已承诺"，计划收款时间：' + ledger.planDate,
+          operator: user.id, time: new Date().toLocaleString('zh-CN')
+        });
+        showToast('状态已更新为"已承诺"');
+      } else if (type === 'paid') {
+        const inputs = form.querySelectorAll('.form-input');
+        ledger.collectStatus = '已回款';
+        ledger.receivedAmount = parseFloat(inputs[0].value);
+        ledger.receivedDate = inputs[1].value;
+        ledger.diffAmount = ledger.amount - ledger.receivedAmount;
+        if (ledger.diffAmount === 0) ledger.overdueStatus = '未逾期';
+        MOCK.collectRecords.push({
+          id: 'R' + Date.now(), ledgerId: ledger.id, type: '到账',
+          content: '到账¥' + formatMoney(ledger.receivedAmount),
+          operator: user.id, time: new Date().toLocaleString('zh-CN')
+        });
+        showToast('状态已更新为"已回款"');
+      }
+      closeModal('statusModal');
+      renderDetail();
+    }
+  </script>
+</body>
+</html>

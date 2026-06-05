@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>首页 Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="../css/common.css">
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar">
+    <div class="navbar-title">催收台账管理</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <a href="notifications.html" style="position:relative;text-decoration:none;color:#333;font-size:20px" title="消息通知">
+        🔔
+        <span id="unreadBadge" style="position:absolute;top:-4px;right:-6px;background:#ff4d4f;color:#fff;font-size:10px;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:8px;display:none;padding:0 4px"></span>
+      </a>
+      <span style="font-size:13px;color:#666" id="userNameDisplay"></span>
+      <span style="font-size:13px;color:#999;cursor:pointer" onclick="logout()">退出</span>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <!-- 统计卡片 -->
+    <div class="stat-grid">
+      <div class="stat-card" onclick="window.location.href='ledger-list.html?filter=today'">
+        <div class="stat-value" id="todayCollect">-</div>
+        <div class="stat-label">今日待催收</div>
+      </div>
+      <div class="stat-card" onclick="window.location.href='ledger-list.html?filter=overdue'">
+        <div class="stat-value red" id="overdueCount">-</div>
+        <div class="stat-label">已逾期</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value green" id="monthAmount">-</div>
+        <div class="stat-label">本月回款金额</div>
+      </div>
+      <div class="stat-card" onclick="window.location.href='ledger-list.html?filter=risk'">
+        <div class="stat-value orange" id="riskCount">-</div>
+        <div class="stat-label">风险项目</div>
+      </div>
+    </div>
+
+    <!-- 快捷入口 -->
+    <div class="quick-entries">
+      <a class="quick-entry" href="ledger-list.html">
+        <div class="entry-icon">📋</div>
+        <div class="entry-text">台账列表</div>
+      </a>
+      <a class="quick-entry" href="delay-approval.html" id="entryDelayApproval">
+        <div class="entry-icon">⏳</div>
+        <div class="entry-text">延期审批</div>
+      </a>
+      <a class="quick-entry" href="reminder-rules.html" id="entryReminderRules">
+        <div class="entry-icon">🔔</div>
+        <div class="entry-text">提醒规则</div>
+      </a>
+      <a class="quick-entry" href="ledger-list.html?action=new" id="entryNewLedger">
+        <div class="entry-icon">➕</div>
+        <div class="entry-text">新建台账</div>
+      </a>
+    </div>
+
+    <!-- 区域统计 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:14px">区域应收统计</span>
+      </div>
+      <div class="chart-bar-wrap" id="regionChart"></div>
+    </div>
+
+    <!-- 状态统计 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:14px">催收状态分布</span>
+      </div>
+      <div id="statusStats"></div>
+    </div>
+
+    <!-- 回款趋势 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title" style="font-size:14px">回款趋势（近5个月）</span>
+      </div>
+      <div class="chart-bar-wrap" id="trendChart"></div>
+    </div>
+  </div>
+
+  <script src="../js/mock.js"></script>
+  <script src="../js/common.js"></script>
+  <script>
+    // 检查登录
+    const user = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!user) {
+      window.location.href = 'login.html';
+    }
+
+    // 渲染
+    document.getElementById('userNameDisplay').textContent = user ? user.name : '';
+
+    // 角色入口控制
+    if (user) {
+      if (user.role === 'salesman') {
+        document.getElementById('entryReminderRules').style.display = 'none';
+        document.getElementById('entryNewLedger').style.display = 'none';
+      }
+      if (user.role === 'finance') {
+        document.getElementById('entryDelayApproval').style.display = 'none';
+      }
+    }
+
+    // 基于角色过滤台账计算统计
+    const filteredLedgers = getFilteredLedgers();
+    const today = '2026-06-03';
+    const now = new Date(today);
+    const thisMonth = today.substring(0, 7); // '2026-06'
+
+    const todayCollect = filteredLedgers.filter(l => l.planDate === today && l.collectStatus !== '已回款' && l.collectStatus !== '坏账关闭').length;
+    const overdueCount = filteredLedgers.filter(l => l.overdueStatus === '已逾期').length;
+    const monthAmount = filteredLedgers.reduce((sum, l) => {
+      if (l.receivedDate && l.receivedDate.startsWith(thisMonth)) return sum + l.receivedAmount;
+      return sum;
+    }, 0);
+    const riskCount = filteredLedgers.filter(l => l.category === '风险').length;
+
+    document.getElementById('todayCollect').textContent = todayCollect;
+    document.getElementById('overdueCount').textContent = overdueCount;
+    document.getElementById('monthAmount').textContent = '¥' + formatMoney(monthAmount);
+    document.getElementById('riskCount').textContent = riskCount;
+
+    // 区域统计（从过滤后的台账计算）
+    const regionMap = {};
+    filteredLedgers.forEach(l => {
+      if (!regionMap[l.region]) regionMap[l.region] = { count: 0, amount: 0 };
+      regionMap[l.region].count += 1;
+      regionMap[l.region].amount += l.amount;
+    });
+    const regionStats = Object.entries(regionMap).map(([region, data]) => ({ region, ...data }));
+    const maxAmount = Math.max(...regionStats.map(r => r.amount), 1);
+
+    // 状态统计（从过滤后的台账计算）
+    const statusMap = {};
+    filteredLedgers.forEach(l => {
+      if (!statusMap[l.collectStatus]) statusMap[l.collectStatus] = { count: 0, amount: 0 };
+      statusMap[l.collectStatus].count += 1;
+      statusMap[l.collectStatus].amount += l.amount;
+    });
+    const statusStats = Object.entries(statusMap).map(([status, data]) => ({ status, ...data }));
+
+    // 未读消息数
+    const unreadCount = MOCK.notifications.filter(n => !n.read).length;
+    const badge = document.getElementById('unreadBadge');
+    if (unreadCount > 0) {
+      badge.style.display = 'block';
+      badge.textContent = unreadCount;
+    }
+
+    // 区域统计柱状图
+    document.getElementById('regionChart').innerHTML = regionStats.map(r => {
+      const h = Math.max(8, (r.amount / maxAmount) * 100);
+      return `<div class="chart-bar-col">
+        <div style="font-size:10px;color:#999;margin-bottom:4px">${formatMoney(r.amount/10000)}万</div>
+        <div class="chart-bar" style="height:${h}px"></div>
+        <div class="chart-bar-label">${r.region}</div>
+      </div>`;
+    }).join('');
+
+    // 状态统计
+    document.getElementById('statusStats').innerHTML = statusStats.map(s => {
+      const colors = { '待回款': '#666', '已承诺': '#1677ff', '已回款': '#52c41a', '坏账关闭': '#2c2c2c' };
+      const pct = statusStats.reduce((sum, x) => sum + x.count, 0);
+      const w = (s.count / pct) * 100;
+      return `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span>${s.status}</span>
+          <span>${s.count}笔 · ¥${formatMoney(s.amount)}</span>
+        </div>
+        <div style="background:#f0f0f0;border-radius:4px;height:8px;overflow:hidden">
+          <div style="width:${w}%;height:100%;background:${colors[s.status]};border-radius:4px"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // 趋势图
+    const maxTrend = Math.max(...MOCK.dashboard.trendData.map(t => t.amount));
+    document.getElementById('trendChart').innerHTML = MOCK.dashboard.trendData.map(t => {
+      const h = Math.max(8, (t.amount / maxTrend) * 100);
+      return `<div class="chart-bar-col">
+        <div style="font-size:10px;color:#999;margin-bottom:4px">${formatMoney(t.amount/10000)}万</div>
+        <div class="chart-bar" style="height:${h}px;background:linear-gradient(180deg,#52c41a,#95de64)"></div>
+        <div class="chart-bar-label">${t.month.substring(5)}月</div>
+      </div>`;
+    }).join('');
+
+    function logout() {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('userRole');
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+</html>
